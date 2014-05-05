@@ -6,12 +6,21 @@
 
 #include <pthread.h>
 #include <time.h>
+#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
+#include "barrier.h" /* There's no standard pthread_barrier on OS X */
 
 /* Bits of value to sort on. */
 #define BITS 29
+
+/* Synchronization tools. */
+#define BARRIER_COUNT 1000
+pthread_barrier_t barrier;
+
+/* Global variables and utilities. */
 
 /****************************************************************************\
  * Array utilities.
@@ -29,7 +38,7 @@ void print_array (unsigned *val, int n)
 {
   int i;
   for ( i = 0; i < n; i++ )
-    printf ("%d  ", val[i]);
+    printf ("%d \n", val[i]);
   printf ("\n");
 }
 
@@ -172,6 +181,10 @@ void radix_sort (unsigned *val, int n, int t)
   int *nzeros, *nones;
   struct rs_args *args;
   int r, i;
+  
+  /* Thread-related variables. */
+  long thread;
+  pthread_t* thread_handles;
 
   /* Allocate temporary array. */
   tmp = (unsigned *) malloc (n * sizeof(unsigned));
@@ -187,7 +200,11 @@ void radix_sort (unsigned *val, int n, int t)
   args = (struct rs_args *) malloc (t * sizeof(struct rs_args));
   if (!args) { fprintf (stderr, "Malloc failed.\n"); exit(1); }
 
-  /* Initialize arguments. */
+  /* Initialize thread handles and barrier. */
+  thread_handles = malloc (t * sizeof(pthread_t));
+  pthread_barrier_init (&barrier, NULL, thread_count);
+  
+  /* Initialize thread arguments. */
   for ( i = 0; i < t; i++ ) {
     args[i].id = i;
     args[i].val = val;
@@ -196,17 +213,24 @@ void radix_sort (unsigned *val, int n, int t)
     args[i].nzeros = nzeros;
     args[i].nones = nones;
     args[i].t = t;
+	
+	/* Create a thread. */
+    pthread_create (&thread_handles[i], NULL, Thread_work, 
+		(void*) thread);  	
   }
-
-  /* Create threads. */
+  
   /* CODE NEEDED HERE. */
-  thread_main (&args[0]);
+  // KM: right now this only pass in one thread
+  thread_main (&args[0]);	//KM: DO WE STILL NEED THIS?
 
-  /* Wait for threads to terminate. */
-  /* CODE NEEDED HERE. */
+  /* Wait for threads to join and terminate. */
+  for ( i = 0; i < t; i++ ) {
+    pthread_join (&thread_handles[i], NULL);  	
+  }
 
   /* Free thread arguments. */
   free (args);
+  free (thread_handles);
 
   printf ("\n====== Before return to main: val array ======\n");
   print_array (val, n);
