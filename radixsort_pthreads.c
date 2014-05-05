@@ -20,7 +20,20 @@
 #define BARRIER_COUNT 1000
 pthread_barrier_t barrier;
 
+/* Thread arguments for radix sort. */
+struct rs_args {
+  int id;         /* thread index. */
+  unsigned *val;  /* array. */
+  unsigned *tmp;  /* temporary array. */
+  int n;          /* size of array. */
+  int *nzeros;    /* array of zero counters. */
+  int *nones;     /* array of one counters. */
+  int t;          /* number of threads. */
+};
+
 /* Global variables and utilities. */
+struct rs_args *args;
+
 
 /****************************************************************************\
  * Array utilities.
@@ -66,11 +79,11 @@ int array_is_sorted (unsigned *val, int n)
 \****************************************************************************/
 
 /* Barrier. */
-void barrier (void)
-{
-  /* CODE NEEDED HERE. */
-  return;
-}
+// void barrier (void)
+// {
+//   /* CODE NEEDED HERE. */
+//   return;
+// }
 
 /****************************************************************************\
  * Thread part of radix sort.
@@ -91,6 +104,7 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
   int bit_pos;
   int index0, index1;
   int i;
+  printf("###### Got in main function, thread %d\n", thread_index);
 
   /* Initialize source and destination. */
   src = val;
@@ -128,7 +142,10 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
 	  	dest[index1++] = src[i];      	
       }
     }
-
+	
+    // Ensure all threads have reached this point, and then let continue
+    pthread_barrier_wait(&barrier);
+	
     /* Swap arrays. */
     tmp = src;
     src = dest;
@@ -144,31 +161,43 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
   // print_array (dest, n);
 }
 
-/* Thread arguments for radix sort. */
-struct rs_args {
-  int id;         /* thread index. */
-  unsigned *val;  /* array. */
-  unsigned *tmp;  /* temporary array. */
-  int n;          /* size of array. */
-  int *nzeros;    /* array of zero counters. */
-  int *nones;     /* array of one counters. */
-  int t;          /* number of threads. */
-};
+// /* Thread main routine. */
+// void thread_main (struct rs_args *args)
+// {
+//   int start;
+//   int n;
+// 
+//   /* Get portion of array to process. */
+//   n = args->n / args->t; /* Number of elements this thread is in charge of */
+//   start = args->id * n; /* Thread is in charge of [start, start+n] elements */
+// 
+//   /* Perform radix sort. */
+//   radix_sort_thread (args->val, args->tmp, start, n,
+// 		     args->nzeros, args->nones, args->id, args->t);
+// }
+
+
 
 /* Thread main routine. */
-void thread_main (struct rs_args *args)
+void thread_work (int rank)
 {
-  int start;
-  int n;
-
+  int start, count, n;
+  int index = rank;
+  // int index = *((int*)rank); /* Retrieve the value of rank. */
+  printf("\n####### Thread_work: THREAD %d = %d \n\n", rank, args[index].id);
+  /* Ensure all threads have reached this point, and then let continue. */
+  // pthread_barrier_wait(&barrier);
+  
   /* Get portion of array to process. */
-  n = args->n / args->t; /* Number of elements this thread is in charge of */
-  start = args->id * n; /* Thread is in charge of [start, start+n] elements */
+  n = args[index].n / args[index].t; /* Number of elements this thread is in charge of */
+  start = args[index].id * n; /* Thread is in charge of [start, start+n] elements */
 
   /* Perform radix sort. */
-  radix_sort_thread (args->val, args->tmp, start, n,
-		     args->nzeros, args->nones, args->id, args->t);
+  radix_sort_thread (args[index].val, args[index].tmp, start, n,
+  		     args[index].nzeros, args[index].nones, args[index].id, args[index].t);
 }
+
+
 
 /****************************************************************************\
  * Main part of radix sort.
@@ -179,7 +208,6 @@ void radix_sort (unsigned *val, int n, int t)
 {
   unsigned *tmp;
   int *nzeros, *nones;
-  struct rs_args *args;
   int r, i;
   
   /* Thread-related variables. */
@@ -196,13 +224,9 @@ void radix_sort (unsigned *val, int n, int t)
   nones = (int *) malloc (t * sizeof(int));
   if (!nones) { fprintf (stderr, "Malloc failed.\n"); exit(1); }
 
-  /* Allocate thread arguments. */
-  args = (struct rs_args *) malloc (t * sizeof(struct rs_args));
-  if (!args) { fprintf (stderr, "Malloc failed.\n"); exit(1); }
-
   /* Initialize thread handles and barrier. */
   thread_handles = malloc (t * sizeof(pthread_t));
-  pthread_barrier_init (&barrier, NULL, thread_count);
+  pthread_barrier_init (&barrier, NULL, t);
   
   /* Initialize thread arguments. */
   for ( i = 0; i < t; i++ ) {
@@ -215,22 +239,22 @@ void radix_sort (unsigned *val, int n, int t)
     args[i].t = t;
 	
 	/* Create a thread. */
-    pthread_create (&thread_handles[i], NULL, Thread_work, 
-		(void*) thread);  	
+	printf ("####### CREATING THREAD id = %d\n", args[i].id);
+    pthread_create (&thread_handles[i], NULL, thread_work, i);
   }
   
-  /* CODE NEEDED HERE. */
-  // KM: right now this only pass in one thread
-  thread_main (&args[0]);	//KM: DO WE STILL NEED THIS?
-
+  printf ("####### THREADS SHOULD BE WORKING NOW \n");
+  
   /* Wait for threads to join and terminate. */
   for ( i = 0; i < t; i++ ) {
-    pthread_join (&thread_handles[i], NULL);  	
+    pthread_join (thread_handles[i], NULL);
+    printf ("####### THREAD %d SHOULD BE FINISHED \n", i);
   }
 
   /* Free thread arguments. */
-  free (args);
+  pthread_barrier_destroy(&barrier);
   free (thread_handles);
+  free (args);
 
   printf ("\n====== Before return to main: val array ======\n");
   print_array (val, n);
@@ -247,6 +271,7 @@ void radix_sort (unsigned *val, int n, int t)
   free (nones);
   free (tmp);
 }
+
 
 
 void main (int argc, char *argv[]) 
@@ -283,13 +308,17 @@ void main (int argc, char *argv[])
   random_array (val, n);
   // printf ("Done.\n");
 
+  /* Allocate thread arguments. */
+  args = (struct rs_args *) malloc (t * sizeof(struct rs_args));
+  if (!args) { fprintf (stderr, "Malloc failed.\n"); exit(1); }
+  
   printf ("\n====== In main, the original array ======\n");
   print_array (val, n);
 
   /* Sort array. */
-  printf ("Sorting array... "); fflush (stdout);
+  printf ("Sorting array... \n"); fflush (stdout);
   start = time (0);
-  radix_sort (val, n, t);
+  radix_sort (val, n, t); /* The main algorithm. */
   end = time (0);
   printf ("Done.\n");
   printf ("Elapsed time = %.0f seconds.\n", difftime(end, start));
