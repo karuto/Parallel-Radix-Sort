@@ -29,7 +29,7 @@ void print_array (unsigned *val, int n)
 {
   int i;
   for ( i = 0; i < n; i++ )
-    printf ("%d ", val[i]);
+    printf ("%d  ", val[i]);
   printf ("\n");
 }
 
@@ -68,11 +68,11 @@ void barrier (void)
 \****************************************************************************/
 
 /* Individual thread part of radix sort. */
-void radix_sort_thread (unsigned *val,           /* Array of values. */
+void radix_sort_thread (unsigned *val, /* Array of values. */
 			unsigned *tmp,           /* Temp array. */
 			int start, int n,        /* Portion of array. */
 			int *nzeros, int *nones, /* Counters. */
-			int self,                /* My thread index. */
+			int thread_index,        /* My thread index. */
 			int t)                   /* Number of theads. */
 {
   /* THIS ROUTINE WILL REQUIRE SOME SYNCHRONIZATION. */
@@ -91,29 +91,33 @@ void radix_sort_thread (unsigned *val,           /* Array of values. */
   for ( bit_pos = 0; bit_pos < BITS; bit_pos++ ) {
 
     /* Count elements with 0 in bit_pos. */
-    nzeros[self] = 0;
-    for ( i = start; i < start + n; i++ )
-      if ( ((src[i] >> bit_pos) & 1) == 0 )
-	nzeros[self]++;
-    nones[self] = n - nzeros[self];
+    nzeros[thread_index] = 0;
+    for ( i = start; i < start + n; i++ ) {
+      if ( ((src[i] >> bit_pos) & 1) == 0 ) {
+	  	nzeros[thread_index]++;      	
+      }	
+    }
+    nones[thread_index] = n - nzeros[thread_index];
 
     /* Get starting indices. */
     index0 = 0;
     index1 = 0;
-    for ( i = 0; i < self; i++ ) {
+    for ( i = 0; i < thread_index; i++ ) {
       index0 += nzeros[i];
       index1 += nones[i];
     }
     index1 += index0;
-    for ( ; i < t; i++ )
+    for ( ; i < t; i++ ) {
       index1 += nzeros[i];
+	}
 
     /* Move values to correct position. */
     for ( i = start; i < start + n; i++ ) {
-      if ( ((src[i] >> bit_pos) & 1) == 0 )
-	dest[index0++] = src[i];
-      else
-	dest[index1++] = src[i];
+      if ( ((src[i] >> bit_pos) & 1) == 0 ) {
+	  	dest[index0++] = src[i];      	
+      } else {
+	  	dest[index1++] = src[i];      	
+      }
     }
 
     /* Swap arrays. */
@@ -121,6 +125,14 @@ void radix_sort_thread (unsigned *val,           /* Array of values. */
     src = dest;
     dest = tmp;
   }
+  printf ("\n====== Printing nzeros array of thread %d\n\n", thread_index);
+  print_array (nzeros, n);
+  printf ("\n====== Printing nones array of thread %d\n\n", thread_index);
+  print_array (nones, n);
+  // printf ("\n====== Printing val array of thread %d\n\n", thread_index);
+  // print_array (val, n);
+  // printf ("\n====== Printing temp array of thread %d\n\n", thread_index);
+  // print_array (dest, n);
 }
 
 /* Thread arguments for radix sort. */
@@ -141,8 +153,8 @@ void thread_main (struct rs_args *args)
   int n;
 
   /* Get portion of array to process. */
-  n = args->n / args->t;
-  start = args->id * n;
+  n = args->n / args->t; /* Number of elements this thread is in charge of */
+  start = args->id * n; /* Thread is in charge of [start, start+n] elements */
 
   /* Perform radix sort. */
   radix_sort_thread (args->val, args->tmp, start, n,
@@ -196,9 +208,15 @@ void radix_sort (unsigned *val, int n, int t)
   /* Free thread arguments. */
   free (args);
 
+  printf ("\n====== Before return to main: val array ======\n");
+  print_array (val, n);
+  printf ("\n====== Before return to main: tmp array ======\n");
+  print_array (tmp, n);
+
   /* Copy array if necessary. */
-  if ( BITS % 2 == 1 )
-    copy_array (val, tmp, n);
+  if ( BITS % 2 == 1 ) {
+    copy_array (val, tmp, n);  	
+  }
 
   /* Free temporary array and couter arrays. */
   free (nzeros);
@@ -207,7 +225,8 @@ void radix_sort (unsigned *val, int n, int t)
 }
 
 
-void main (int argc, char *argv[]) {
+void main (int argc, char *argv[]) 
+{
   int n, t;
   unsigned *val;
   time_t start, end;
@@ -238,7 +257,10 @@ void main (int argc, char *argv[]) {
   /* Initialize array. */
   printf ("Initializing array... "); fflush (stdout);
   random_array (val, n);
-  printf ("Done.\n");
+  // printf ("Done.\n");
+
+  printf ("\n====== In main, the original array ======\n");
+  print_array (val, n);
 
   /* Sort array. */
   printf ("Sorting array... "); fflush (stdout);
@@ -249,7 +271,6 @@ void main (int argc, char *argv[]) {
   printf ("Elapsed time = %.0f seconds.\n", difftime(end, start));
 
   /* Check result. */
-  if ( n <= 30 ) print_array (val, n);
   printf ("Testing array... "); fflush (stdout);
   ok = array_is_sorted (val, n);
   printf ("Done.\n");
@@ -258,6 +279,11 @@ void main (int argc, char *argv[]) {
   else
     printf ("Oops! Array is not correctly sorted.\n");
 
+  if ( ok && n <= 30 ) {
+	printf ("\n====== After return to main: tmp array ======\n");
+    print_array (val, n);
+  }
+  
   /* Free array. */
   free (val);
 }
