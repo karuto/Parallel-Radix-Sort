@@ -1,8 +1,13 @@
-/****************************************************************************\
- * radix.c
- * Robert Blumofe
- * Copyright (c) Robert Blumofe, 1996.  All rights reserved.
-\****************************************************************************/
+/* File:       radixsort_pthreads.c
+ * Author:     Vincent Zhang
+ *
+ * Purpose:    A C program using pthreads to implement a parallel solution to 
+ *             the radix sort.
+ *
+ * Compile:    gcc -g -Wall -w radixsort_pthreads.c -o radixsort_pthreads
+ * Run:        ./radixsort_pthreads [number of elements] [number of threads]
+ *
+ */
 
 #include <pthread.h>
 #include <time.h>
@@ -121,6 +126,9 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
       }	
     }
     nones[thread_index] = n - nzeros[thread_index];
+	
+    /* Ensure all threads have reached this point, and then let continue */
+    pthread_barrier_wait(&barrier);
 
     /* Get starting indices. */
     index0 = 0;
@@ -133,6 +141,9 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
     for ( ; i < t; i++ ) {
       index1 += nzeros[i];
 	}
+	
+    /* Ensure all threads have reached this point, and then let continue */
+    pthread_barrier_wait(&barrier);
 
     /* Move values to correct position. */
     for ( i = start; i < start + n; i++ ) {
@@ -143,7 +154,7 @@ void radix_sort_thread (unsigned *val, /* Array of values. */
       }
     }
 	
-    // Ensure all threads have reached this point, and then let continue
+    /* Ensure all threads have reached this point, and then let continue */
     pthread_barrier_wait(&barrier);
 	
     /* Swap arrays. */
@@ -183,7 +194,6 @@ void thread_work (int rank)
 {
   int start, count, n;
   int index = rank;
-  // int index = *((int*)rank); /* Retrieve the value of rank. */
   printf("\n####### Thread_work: THREAD %d = %d \n\n", rank, args[index].id);
   /* Ensure all threads have reached this point, and then let continue. */
   // pthread_barrier_wait(&barrier);
@@ -340,3 +350,12 @@ void main (int argc, char *argv[])
   /* Free array. */
   free (val);
 }
+
+
+
+/****************************************************************************\
+ * Skeleton code (without any parallelism) based on University of Washington: 
+ * radix.c
+ * Robert Blumofe
+ * Copyright (c) Robert Blumofe, 1996.  All rights reserved.
+\****************************************************************************/
